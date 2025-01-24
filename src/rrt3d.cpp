@@ -15,33 +15,59 @@
 
 using namespace std::chrono_literals;
 
+struct RRT_Arrow;
+
 struct RRT_Node {
 public:
-  RRT_Node() {}
+  RRT_Node()
+    : index(0), coord(geometry_msgs::msg::Point()), parent(nullptr),
+      arrow(nullptr)
+  {}
   RRT_Node(geometry_msgs::msg::Point coord, std::shared_ptr<RRT_Node> parent)
-    : dist(0), coord(coord), parent(parent)
-  {
-  }
-  RRT_Node(int dist, geometry_msgs::msg::Point coord,
+    : index(0), coord(coord), parent(parent), arrow(nullptr)
+  {}
+  RRT_Node(int index, geometry_msgs::msg::Point coord,
            std::shared_ptr<RRT_Node> parent)
-    : dist(dist), coord(coord), parent(parent)
-  {
-  }
-  int dist;
+    : index(index), coord(coord), parent(parent), arrow(nullptr)
+  {}
+  RRT_Node(int index, geometry_msgs::msg::Point coord,
+           std::shared_ptr<RRT_Node> parent, std::shared_ptr<RRT_Arrow> arrow)
+    : index(index), coord(coord), parent(parent), arrow(arrow)
+  {}
+
+  int index;
   geometry_msgs::msg::Point coord;
   std::shared_ptr<RRT_Node> parent;
+  std::shared_ptr<RRT_Arrow> arrow;
+};
+
+struct RRT_Arrow {
+public:
+  RRT_Arrow() {}
+  RRT_Arrow(std::shared_ptr<RRT_Node> start, std::shared_ptr<RRT_Node> end)
+    : index(0), start(start), end(end)
+  {}
+  RRT_Arrow(int index, std::shared_ptr<RRT_Node> start,
+            std::shared_ptr<RRT_Node> end)
+    : index(index), start(start), end(end)
+  {}
+
+  int index;
+  std::shared_ptr<RRT_Node> start;
+  std::shared_ptr<RRT_Node> end;
 };
 
 class RRT3D : public rclcpp::Node {
 public:
   RRT3D()
     : Node("rrt3d"), found_goal_(false), rd(), gen(rd()), node_count_(0),
-      arrow_count_(0), min_dist_(std::numeric_limits<double>::max())
+      arrow_count_(0)
   {
     // declare parameters
     declare_parameter<std::vector<double>>("world_bounds", {10.0, 10.0, 10.0});
-    declare_parameter<std::vector<double>>("start_coord", {0.0, 0.0, 0.0});
-    declare_parameter<std::vector<double>>("goal_coord", {0.0, 0.0, 0.0});
+    declare_parameter<std::vector<double>>("start_coord",
+                                           std::vector<double>{});
+    declare_parameter<std::vector<double>>("goal_coord", std::vector<double>{});
     declare_parameter("step_size", 1.0);
 
     // get parameters
@@ -53,35 +79,31 @@ public:
 
     std::vector<double> start_coord =
       get_parameter("start_coord").as_double_array();
-    start_coord_.x = start_coord.at(0);
-    start_coord_.y = start_coord.at(1);
-    start_coord_.z = start_coord.at(2);
-    if (euclidean_distance(geometry_msgs::msg::Point(), start_coord_) < 1e-6) {
+    if (start_coord.size() < 3) {
       start_coord_ = get_random_point();
+    } else {
+      start_coord_.x = start_coord.at(0);
+      start_coord_.y = start_coord.at(1);
+      start_coord_.z = start_coord.at(2);
     }
 
     std::vector<double> goal_coord =
       get_parameter("goal_coord").as_double_array();
-    goal_coord_.x = goal_coord.at(0);
-    goal_coord_.y = goal_coord.at(1);
-    goal_coord_.z = goal_coord.at(2);
-    if (euclidean_distance(geometry_msgs::msg::Point(), goal_coord_) < 1e-6) {
+    if (goal_coord.size() < 3) {
       goal_coord_ = get_random_point();
+    } else {
+      goal_coord_.x = goal_coord.at(0);
+      goal_coord_.y = goal_coord.at(1);
+      goal_coord_.z = goal_coord.at(2);
     }
 
-    RCLCPP_INFO_STREAM(get_logger(), "start_coord: " << start_coord_.x << ", "
-                                                     << start_coord_.y << ", "
-                                                     << start_coord_.z);
-    RCLCPP_INFO_STREAM(get_logger(), "goal_coord: " << goal_coord_.x << ", "
-                                                    << goal_coord_.y << ", "
-                                                    << goal_coord_.z);
     step_size_ = get_parameter("step_size").as_double();
 
     // initialize some variables
-    std::shared_ptr<RRT_Node> start =
-      std::make_shared<RRT_Node>(start_coord_, nullptr);
     std::shared_ptr<RRT_Node> goal =
-      std::make_shared<RRT_Node>(goal_coord_, nullptr);
+      std::make_shared<RRT_Node>(node_count_++, goal_coord_, nullptr);
+    std::shared_ptr<RRT_Node> start =
+      std::make_shared<RRT_Node>(node_count_++, start_coord_, nullptr);
     nodes.push_back(start);
     visualization_msgs::msg::Marker start_marker = *create_sphere_marker(start);
     visualization_msgs::msg::Marker goal_marker = *create_sphere_marker(goal);
@@ -89,15 +111,15 @@ public:
     start_marker.color.b = 1.0;
     goal_marker.color.r = 0.0;
     goal_marker.color.g = 1.0;
-    node_markers_.markers.push_back(start_marker);
     node_markers_.markers.push_back(goal_marker);
+    node_markers_.markers.push_back(start_marker);
 
     // initialize publishers, subscribers, etc.
     node_publisher_ =
       create_publisher<visualization_msgs::msg::MarkerArray>("nodes", 10);
     arrow_publisher_ =
       create_publisher<visualization_msgs::msg::MarkerArray>("arrows", 10);
-    timer_ = create_wall_timer(50ms, std::bind(&RRT3D::run, this));
+    timer_ = create_wall_timer(10ms, std::bind(&RRT3D::run, this));
   }
 
   geometry_msgs::msg::Point get_random_point()
@@ -127,7 +149,7 @@ public:
     visualization_msgs::msg::Marker marker;
     marker.header.stamp = get_clock()->now();
     marker.header.frame_id = "world";
-    marker.id = node_count_++;
+    marker.id = node->index;
     marker.type = visualization_msgs::msg::Marker::SPHERE;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose.position.x = node->coord.x;
@@ -143,22 +165,41 @@ public:
   }
 
   std::shared_ptr<visualization_msgs::msg::Marker>
-  create_arrow_marker(std::shared_ptr<RRT_Node> start,
-                      std::shared_ptr<RRT_Node> end)
+  create_arrow_marker(std::shared_ptr<RRT_Arrow> arrow)
   {
     visualization_msgs::msg::Marker marker;
     marker.header.stamp = get_clock()->now();
     marker.header.frame_id = "world";
-    marker.id = arrow_count_++;
+    marker.id = arrow->index;
     marker.type = visualization_msgs::msg::Marker::ARROW;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.points = {start->coord, end->coord};
+    marker.points = {arrow->start->coord, arrow->end->coord};
     marker.color.r = 1.0;
     marker.color.a = 1.0;
     marker.scale.x = 0.05;
     marker.scale.y = 0.05;
 
     return std::make_shared<visualization_msgs::msg::Marker>(marker);
+  }
+
+  void highlight_path(std::shared_ptr<RRT_Node> node)
+  {
+    std::shared_ptr<RRT_Node> goal_node =
+      std::make_shared<RRT_Node>(node_count_++, goal_coord_, node);
+    std::shared_ptr<RRT_Arrow> new_arrow =
+      std::make_shared<RRT_Arrow>(arrow_count_++, node, goal_node);
+    auto new_arrow_marker = create_arrow_marker(new_arrow);
+    new_arrow_marker->color.r = 0.0;
+    new_arrow_marker->color.g = 1.0;
+    arrow_markers_.markers.push_back(*new_arrow_marker);
+
+    while (node->parent != nullptr) {
+      node_markers_.markers.at(node->index).color.r = 0.0;
+      node_markers_.markers.at(node->index).color.g = 1.0;
+      arrow_markers_.markers.at(node->arrow->index).color.r = 0.0;
+      arrow_markers_.markers.at(node->arrow->index).color.g = 1.0;
+      node = node->parent;
+    }
   }
 
   void run()
@@ -194,25 +235,31 @@ public:
       new_point.y = closest_node->coord.y + unit_vector.y * step_size_;
       new_point.z = closest_node->coord.z + unit_vector.z * step_size_;
 
-      std::shared_ptr<RRT_Node> new_node = std::make_shared<RRT_Node>(
-        closest_node->dist + 1, new_point, closest_node);
-      nodes.push_back(std::make_shared<RRT_Node>(closest_node->dist + 1,
-                                                 new_point, closest_node));
+      std::shared_ptr<RRT_Node> new_node =
+        std::make_shared<RRT_Node>(node_count_++, new_point, closest_node);
+      std::shared_ptr<RRT_Arrow> new_arrow =
+        std::make_shared<RRT_Arrow>(arrow_count_++, closest_node, new_node);
+      new_node->arrow = new_arrow;
+
+      nodes.push_back(new_node);
       node_markers_.markers.push_back(*create_sphere_marker(new_node));
-      arrow_markers_.markers.push_back(
-        *create_arrow_marker(closest_node, new_node));
+      arrow_markers_.markers.push_back(*create_arrow_marker(new_arrow));
+
+      // RCLCPP_INFO_STREAM(
+      //   get_logger(), "node_markers_ size: " <<
+      //   node_markers_.markers.size());
+      // for (const auto &node : node_markers_.markers) {
+      //   RCLCPP_INFO_STREAM(get_logger(), "node: " << node.id);
+      // }
+
+      if (euclidean_distance(new_point, goal_coord_) < step_size_ * 2) {
+        found_goal_ = true;
+        highlight_path(new_node);
+        RCLCPP_INFO(get_logger(), "Found the goal!");
+      }
 
       node_publisher_->publish(node_markers_);
       arrow_publisher_->publish(arrow_markers_);
-
-      double dist = euclidean_distance(new_point, goal_coord_);
-      if (dist < min_dist_)
-        min_dist_ = dist;
-      RCLCPP_INFO_STREAM(get_logger(), "min dist so far: " << min_dist_);
-      if (euclidean_distance(new_point, goal_coord_) < 1.0) {
-        found_goal_ = true;
-        RCLCPP_INFO(get_logger(), "Found the goal!");
-      }
     }
   }
 
@@ -238,7 +285,6 @@ private:
 
   int node_count_;
   int arrow_count_;
-  double min_dist_;
 };
 
 int main(int argc, char *argv[])
