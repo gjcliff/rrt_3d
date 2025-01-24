@@ -37,7 +37,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "step_size",
-                default_value="0.1",
+                default_value="1.0",
                 description="Default step size along unit vector in RRT for new nodes",
             ),
             Node(

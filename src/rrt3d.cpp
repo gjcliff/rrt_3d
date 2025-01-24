@@ -36,13 +36,13 @@ class RRT3D : public rclcpp::Node {
 public:
   RRT3D()
     : Node("rrt3d"), found_goal_(false), rd(), gen(rd()), node_count_(0),
-      arrow_count_(0)
+      arrow_count_(0), min_dist_(std::numeric_limits<double>::max())
   {
     // declare parameters
     declare_parameter<std::vector<double>>("world_bounds", {10.0, 10.0, 10.0});
     declare_parameter<std::vector<double>>("start_coord", {0.0, 0.0, 0.0});
     declare_parameter<std::vector<double>>("goal_coord", {0.0, 0.0, 0.0});
-    declare_parameter("step_size", 0.1);
+    declare_parameter("step_size", 1.0);
 
     // get parameters
     std::vector<double> world_bounds =
@@ -56,7 +56,7 @@ public:
     start_coord_.x = start_coord.at(0);
     start_coord_.y = start_coord.at(1);
     start_coord_.z = start_coord.at(2);
-    if (euclidean_distance(geometry_msgs::msg::Point(), start_coord_) < 1e-6)  {
+    if (euclidean_distance(geometry_msgs::msg::Point(), start_coord_) < 1e-6) {
       start_coord_ = get_random_point();
     }
 
@@ -65,36 +65,52 @@ public:
     goal_coord_.x = goal_coord.at(0);
     goal_coord_.y = goal_coord.at(1);
     goal_coord_.z = goal_coord.at(2);
-    if (euclidean_distance(geometry_msgs::msg::Point(), goal_coord_) < 1e-6)  {
+    if (euclidean_distance(geometry_msgs::msg::Point(), goal_coord_) < 1e-6) {
       goal_coord_ = get_random_point();
     }
 
+    RCLCPP_INFO_STREAM(get_logger(), "start_coord: " << start_coord_.x << ", "
+                                                     << start_coord_.y << ", "
+                                                     << start_coord_.z);
+    RCLCPP_INFO_STREAM(get_logger(), "goal_coord: " << goal_coord_.x << ", "
+                                                    << goal_coord_.y << ", "
+                                                    << goal_coord_.z);
     step_size_ = get_parameter("step_size").as_double();
 
     // initialize some variables
     std::shared_ptr<RRT_Node> start =
       std::make_shared<RRT_Node>(start_coord_, nullptr);
+    std::shared_ptr<RRT_Node> goal =
+      std::make_shared<RRT_Node>(goal_coord_, nullptr);
     nodes.push_back(start);
+    visualization_msgs::msg::Marker start_marker = *create_sphere_marker(start);
+    visualization_msgs::msg::Marker goal_marker = *create_sphere_marker(goal);
+    start_marker.color.r = 0.0;
+    start_marker.color.b = 1.0;
+    goal_marker.color.r = 0.0;
+    goal_marker.color.g = 1.0;
+    node_markers_.markers.push_back(start_marker);
+    node_markers_.markers.push_back(goal_marker);
 
     // initialize publishers, subscribers, etc.
     node_publisher_ =
       create_publisher<visualization_msgs::msg::MarkerArray>("nodes", 10);
     arrow_publisher_ =
       create_publisher<visualization_msgs::msg::MarkerArray>("arrows", 10);
-    timer_ = create_wall_timer(500ms, std::bind(&RRT3D::run, this));
+    timer_ = create_wall_timer(50ms, std::bind(&RRT3D::run, this));
   }
 
   geometry_msgs::msg::Point get_random_point()
   {
-      geometry_msgs::msg::Point rpoint;
-      std::uniform_real_distribution<> ux(-world_bounds_.x, world_bounds_.x);
-      std::uniform_real_distribution<> uy(-world_bounds_.y, world_bounds_.y);
-      std::uniform_real_distribution<> uz(-world_bounds_.z, world_bounds_.z);
-      rpoint.x = ux(gen);
-      rpoint.y = uy(gen);
-      rpoint.z = uz(gen);
+    geometry_msgs::msg::Point rpoint;
+    std::uniform_real_distribution<> ux(-world_bounds_.x, world_bounds_.x);
+    std::uniform_real_distribution<> uy(-world_bounds_.y, world_bounds_.y);
+    std::uniform_real_distribution<> uz(-world_bounds_.z, world_bounds_.z);
+    rpoint.x = ux(gen);
+    rpoint.y = uy(gen);
+    rpoint.z = uz(gen);
 
-      return rpoint;
+    return rpoint;
   }
 
   double euclidean_distance(geometry_msgs::msg::Point start,
@@ -119,9 +135,9 @@ public:
     marker.pose.position.z = node->coord.z;
     marker.color.r = 1.0;
     marker.color.a = 1.0;
-    marker.scale.x = 0.5;
-    marker.scale.y = 0.5;
-    marker.scale.z = 0.5;
+    marker.scale.x = 0.2;
+    marker.scale.y = 0.2;
+    marker.scale.z = 0.2;
 
     return std::make_shared<visualization_msgs::msg::Marker>(marker);
   }
@@ -139,6 +155,8 @@ public:
     marker.points = {start->coord, end->coord};
     marker.color.r = 1.0;
     marker.color.a = 1.0;
+    marker.scale.x = 0.05;
+    marker.scale.y = 0.05;
 
     return std::make_shared<visualization_msgs::msg::Marker>(marker);
   }
@@ -153,7 +171,8 @@ public:
       double min_dist = std::numeric_limits<double>::max();
       std::shared_ptr<RRT_Node> closest_node;
       for (const auto &node : nodes) {
-        if (double dist = euclidean_distance(node->coord, rpoint) < min_dist) {
+        double dist = euclidean_distance(node->coord, rpoint);
+        if (dist < min_dist) {
           min_dist = dist;
           closest_node = node;
         }
@@ -171,9 +190,9 @@ public:
                       euclidean_distance(rpoint, closest_node->coord);
 
       geometry_msgs::msg::Point new_point;
-      new_point.x = closest_node->coord.x + unit_vector.x;
-      new_point.y = closest_node->coord.y + unit_vector.y;
-      new_point.z = closest_node->coord.z + unit_vector.z;
+      new_point.x = closest_node->coord.x + unit_vector.x * step_size_;
+      new_point.y = closest_node->coord.y + unit_vector.y * step_size_;
+      new_point.z = closest_node->coord.z + unit_vector.z * step_size_;
 
       std::shared_ptr<RRT_Node> new_node = std::make_shared<RRT_Node>(
         closest_node->dist + 1, new_point, closest_node);
@@ -186,7 +205,11 @@ public:
       node_publisher_->publish(node_markers_);
       arrow_publisher_->publish(arrow_markers_);
 
-      if (euclidean_distance(new_point, goal_coord_) < 0.2) {
+      double dist = euclidean_distance(new_point, goal_coord_);
+      if (dist < min_dist_)
+        min_dist_ = dist;
+      RCLCPP_INFO_STREAM(get_logger(), "min dist so far: " << min_dist_);
+      if (euclidean_distance(new_point, goal_coord_) < 1.0) {
         found_goal_ = true;
         RCLCPP_INFO(get_logger(), "Found the goal!");
       }
@@ -215,6 +238,7 @@ private:
 
   int node_count_;
   int arrow_count_;
+  double min_dist_;
 };
 
 int main(int argc, char *argv[])
