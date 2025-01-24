@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rrt_3d</name>
+  <name>rrt3d</name>
   <version>0.0.0</version>
   <description>Rapidly-Expanding Random Tree  (RRT) in  3d in ros2 humble</description>
   <maintainer email="gclifford@u.northwestern.edu">Graham Clifford</maintainer>

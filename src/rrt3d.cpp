@@ -39,29 +39,35 @@ public:
       arrow_count_(0)
   {
     // declare parameters
+    declare_parameter<std::vector<double>>("world_bounds", {10.0, 10.0, 10.0});
     declare_parameter<std::vector<double>>("start_coord", {0.0, 0.0, 0.0});
     declare_parameter<std::vector<double>>("goal_coord", {0.0, 0.0, 0.0});
-    declare_parameter<std::vector<double>>("world_size", {0.0, 0.0, 0.0});
     declare_parameter("step_size", 0.1);
 
     // get parameters
+    std::vector<double> world_bounds =
+      get_parameter("world_bounds").as_double_array();
+    world_bounds_.x = world_bounds.at(0);
+    world_bounds_.y = world_bounds.at(1);
+    world_bounds_.z = world_bounds.at(2);
+
     std::vector<double> start_coord =
       get_parameter("start_coord").as_double_array();
     start_coord_.x = start_coord.at(0);
     start_coord_.y = start_coord.at(1);
     start_coord_.z = start_coord.at(2);
+    if (euclidean_distance(geometry_msgs::msg::Point(), start_coord_) < 1e-6)  {
+      start_coord_ = get_random_point();
+    }
 
     std::vector<double> goal_coord =
       get_parameter("goal_coord").as_double_array();
     goal_coord_.x = goal_coord.at(0);
     goal_coord_.y = goal_coord.at(1);
     goal_coord_.z = goal_coord.at(2);
-
-    std::vector<double> world_size =
-      get_parameter("world_size").as_double_array();
-    world_bounds_.x = world_size.at(0);
-    world_bounds_.y = world_size.at(1);
-    world_bounds_.z = world_size.at(2);
+    if (euclidean_distance(geometry_msgs::msg::Point(), goal_coord_) < 1e-6)  {
+      goal_coord_ = get_random_point();
+    }
 
     step_size_ = get_parameter("step_size").as_double();
 
@@ -76,6 +82,19 @@ public:
     arrow_publisher_ =
       create_publisher<visualization_msgs::msg::MarkerArray>("arrows", 10);
     timer_ = create_wall_timer(500ms, std::bind(&RRT3D::run, this));
+  }
+
+  geometry_msgs::msg::Point get_random_point()
+  {
+      geometry_msgs::msg::Point rpoint;
+      std::uniform_real_distribution<> ux(-world_bounds_.x, world_bounds_.x);
+      std::uniform_real_distribution<> uy(-world_bounds_.y, world_bounds_.y);
+      std::uniform_real_distribution<> uz(-world_bounds_.z, world_bounds_.z);
+      rpoint.x = ux(gen);
+      rpoint.y = uy(gen);
+      rpoint.z = uz(gen);
+
+      return rpoint;
   }
 
   double euclidean_distance(geometry_msgs::msg::Point start,
@@ -128,13 +147,7 @@ public:
   {
     if (!found_goal_) {
       // pick a random point in the workspace
-      geometry_msgs::msg::Point rpoint;
-      std::uniform_real_distribution<> ux(-world_bounds_.x, world_bounds_.x);
-      std::uniform_real_distribution<> uy(-world_bounds_.y, world_bounds_.y);
-      std::uniform_real_distribution<> uz(-world_bounds_.z, world_bounds_.z);
-      rpoint.x = ux(gen);
-      rpoint.y = uy(gen);
-      rpoint.z = uz(gen);
+      geometry_msgs::msg::Point rpoint = get_random_point();
 
       // find the closest node
       double min_dist = std::numeric_limits<double>::max();

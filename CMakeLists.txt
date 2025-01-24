@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(rrt_3d)
+project(rrt3d)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,6 +19,18 @@ ament_target_dependencies(rrt3d rclcpp std_msgs geometry_msgs
                           visualization_msgs)
 
 target_include_directories(rrt3d PRIVATE include/)
+
+# install config files
+install(
+  DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
+# install launch files
+install(
+  DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
