@@ -11,10 +11,12 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 add_executable(rrt3d src/rrt3d.cpp)
 
-ament_target_dependencies(rrt3d rclcpp std_msgs geometry_msgs)
+ament_target_dependencies(rrt3d rclcpp std_msgs geometry_msgs
+                          visualization_msgs)
 
 target_include_directories(rrt3d PRIVATE include/)
 
