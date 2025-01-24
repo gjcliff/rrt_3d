@@ -36,7 +36,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_rviz",
                 default_value="true",
-                description="whether or not to use rviz"
+                description="Whether or not to use rviz"
             ),
             Node(
                 package="rviz2",
