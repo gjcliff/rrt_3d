@@ -23,9 +23,6 @@ public:
     : index(0), coord(geometry_msgs::msg::Point()), parent(nullptr),
       arrow(nullptr)
   {}
-  RRT_Node(geometry_msgs::msg::Point coord, std::shared_ptr<RRT_Node> parent)
-    : index(0), coord(coord), parent(parent), arrow(nullptr)
-  {}
   RRT_Node(int index, geometry_msgs::msg::Point coord,
            std::shared_ptr<RRT_Node> parent)
     : index(index), coord(coord), parent(parent), arrow(nullptr)
@@ -122,6 +119,8 @@ public:
     timer_ = create_wall_timer(10ms, std::bind(&RRT3D::run, this));
   }
 
+  // \brief Sample a random point that's within the bounds of the world
+  // \return The random point
   geometry_msgs::msg::Point get_random_point()
   {
     geometry_msgs::msg::Point rpoint;
@@ -135,6 +134,10 @@ public:
     return rpoint;
   }
 
+  // \brief Calculate the euclidean distance between two points
+  // \param start The start point
+  // \param end The end point
+  // \return The euclidean distance
   double euclidean_distance(geometry_msgs::msg::Point start,
                             geometry_msgs::msg::Point end)
   {
@@ -143,6 +146,9 @@ public:
                      std::pow(start.z - end.z, 2));
   }
 
+  // \brief Create a sphere marker object based on an RRT node
+  // \param node The RRT node we want to make a marker for
+  // \return A shared pointer to the sphere marker object for the RRT node
   std::shared_ptr<visualization_msgs::msg::Marker>
   create_sphere_marker(std::shared_ptr<RRT_Node> node)
   {
@@ -164,6 +170,10 @@ public:
     return std::make_shared<visualization_msgs::msg::Marker>(marker);
   }
 
+  // \brief Create an arrow marker between two RRT nodes
+  // \param arrow The arrow object to create the marker from, which stores its
+  // own start and end point.
+  // \return A shared pointer to an arrow marker
   std::shared_ptr<visualization_msgs::msg::Marker>
   create_arrow_marker(std::shared_ptr<RRT_Arrow> arrow)
   {
@@ -182,6 +192,7 @@ public:
     return std::make_shared<visualization_msgs::msg::Marker>(marker);
   }
 
+  // \brief Turn the shortest path we found from start->goal green
   void highlight_path(std::shared_ptr<RRT_Node> node)
   {
     std::shared_ptr<RRT_Node> goal_node =
@@ -202,6 +213,7 @@ public:
     }
   }
 
+  // \brief This execute one iteration of the RRT algorithm
   void run()
   {
     if (!found_goal_) {
@@ -245,13 +257,6 @@ public:
       node_markers_.markers.push_back(*create_sphere_marker(new_node));
       arrow_markers_.markers.push_back(*create_arrow_marker(new_arrow));
 
-      // RCLCPP_INFO_STREAM(
-      //   get_logger(), "node_markers_ size: " <<
-      //   node_markers_.markers.size());
-      // for (const auto &node : node_markers_.markers) {
-      //   RCLCPP_INFO_STREAM(get_logger(), "node: " << node.id);
-      // }
-
       if (euclidean_distance(new_point, goal_coord_) < step_size_ * 2) {
         found_goal_ = true;
         highlight_path(new_node);
@@ -281,7 +286,7 @@ private:
   std::random_device rd;
   std::mt19937 gen;
 
-  std::vector<std::shared_ptr<RRT_Node>> nodes; // start with this, can optimize
+  std::vector<std::shared_ptr<RRT_Node>> nodes;
 
   int node_count_;
   int arrow_count_;

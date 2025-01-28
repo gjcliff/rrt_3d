@@ -67,6 +67,7 @@ def generate_launch_description():
                         "start_coord": LaunchConfiguration("start_coord"),
                         "goal_coord": LaunchConfiguration("goal_coord"),
                         "world_bounds": LaunchConfiguration("world_bounds"),
+                        "step_size": LaunchConfiguration("step_size"),
                     }
                 ],
             ),
